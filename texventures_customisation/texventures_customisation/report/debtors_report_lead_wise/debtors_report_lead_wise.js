@@ -1,8 +1,8 @@
-// Copyright (c) 2026, SAW India and contributors
+// Copyright (c) 2026, SAWIndia and contributors
 // For license information, please see license.txt
 
-frappe.query_reports["Lead Person Wise"] = {
-    filters: [
+frappe.query_reports["Debtors Report Lead wise"] = {
+	filters: [
         {
             fieldname: "company",
             label: __("Company"),
