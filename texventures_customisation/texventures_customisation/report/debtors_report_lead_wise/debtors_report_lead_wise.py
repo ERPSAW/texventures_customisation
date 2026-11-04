@@ -25,13 +25,13 @@ def get_columns():
 	return [
 		{
 			"label": "Lead Person",
-			"fieldname": "lead_person",
+			"fieldname": "sales_person",
 			"fieldtype": "Data",
 			"width": 150,
 		},
 		{
-			"label": "Sales Person",
-			"fieldname": "sales_person",
+			"label": "Sales Partner",
+			"fieldname": "sales_partner",
 			"fieldtype": "Data",
 			"width": 150,
 		},
@@ -162,12 +162,12 @@ def get_report_data(filters):
 	# LEAD PERSON FILTER
 	# =====================================================
 
-	if filters.get("lead_person"):
+	if filters.get("sales_partner"):
 
 		conditions += """
-			AND si.sales_partner = %(lead_person)s
+			AND si.sales_partner = %(sales_partner)s
 		"""
-		values["lead_person"] = filters["lead_person"]
+		values["sales_partner"] = filters["sales_partner"]
 
 	# =====================================================
 	# SALES PERSON FILTER
@@ -228,6 +228,7 @@ def get_report_data(filters):
 				ELSE 0
 			END,
 			st.sales_person,
+			si.sales_partner,
 			si.customer,
 			si.posting_date,
 			si.name
@@ -239,8 +240,8 @@ def get_report_data(filters):
 	# =====================================================
 	# BUILD HIERARCHY
 	#
-	# Lead Person
-	#     Sales Person
+	# Sales Person
+	#     Lead Person
 	#         Customer
 	#             Invoice
 	# =====================================================
@@ -262,11 +263,10 @@ def get_report_data(filters):
 		# LEAD PERSON
 		# -------------------------------------------------
 
-		# Lead Person comes directly from Sales Invoice.sales_partner.
-		lead_person = (row.sales_partner or "").strip()
+		sales_partner = (row.sales_partner or "").strip()
 
-		if not lead_person:
-			lead_person = "Undefined"
+		if not sales_partner:
+			sales_partner = "Undefined"
 
 		# -------------------------------------------------
 		# CUSTOMER
@@ -278,31 +278,31 @@ def get_report_data(filters):
 			customer = "Undefined"
 
 		# -------------------------------------------------
-		# CREATE LEAD PERSON
-		# -------------------------------------------------
-
-		if lead_person not in hierarchy:
-			hierarchy[lead_person] = {}
-
-		# -------------------------------------------------
 		# CREATE SALES PERSON
 		# -------------------------------------------------
 
-		if sales_person not in hierarchy[lead_person]:
-			hierarchy[lead_person][sales_person] = {}
+		if sales_person not in hierarchy:
+			hierarchy[sales_person] = {}
+
+		# -------------------------------------------------
+		# CREATE LEAD PERSON
+		# -------------------------------------------------
+
+		if sales_partner not in hierarchy[sales_person]:
+			hierarchy[sales_person][sales_partner] = {}
 
 		# -------------------------------------------------
 		# CREATE CUSTOMER
 		# -------------------------------------------------
 
-		if customer not in hierarchy[lead_person][sales_person]:
-			hierarchy[lead_person][sales_person][customer] = []
+		if customer not in hierarchy[sales_person][sales_partner]:
+			hierarchy[sales_person][sales_partner][customer] = []
 
 		# -------------------------------------------------
 		# ADD INVOICE
 		# -------------------------------------------------
 
-		hierarchy[lead_person][sales_person][customer].append(row)
+		hierarchy[sales_person][sales_partner][customer].append(row)
 
 	# =====================================================
 	# REPORT DATA
@@ -319,35 +319,73 @@ def get_report_data(filters):
 	overall_balance = 0
 
 	# =====================================================
-	# LEAD PERSON LOOP
+	# SALES PERSON LOOP
 	# =====================================================
 
-	for lead_person in sorted(hierarchy):
+	for sales_person in sorted(hierarchy):
 
 		# -------------------------------------------------
-		# LEAD TOTALS
+		# SALES PERSON TOTALS
 		# -------------------------------------------------
 
-		lead_bill = 0
-		lead_part_payment = 0
-		lead_balance = 0
+		sales_bill = 0
+		sales_part_payment = 0
+		sales_balance = 0
 
 		# -------------------------------------------------
-		# CALCULATE LEAD TOTALS
+		# CALCULATE SALES PERSON TOTALS
 		# -------------------------------------------------
 
-		for sales_person in hierarchy[lead_person]:
+		for sales_partner in hierarchy[sales_person]:
 
-			for customer in hierarchy[lead_person][sales_person]:
+			for customer in hierarchy[sales_person][sales_partner]:
 
-				for invoice in hierarchy[
-					lead_person
-				][sales_person][customer]:
+				for invoice in hierarchy[sales_person][sales_partner][customer]:
 
 					bill_amt = invoice.grand_total or 0
-
 					balance = invoice.outstanding_amount or 0
+					part_payment = bill_amt - balance
 
+					if part_payment < 0:
+						part_payment = 0
+
+					sales_bill += bill_amt
+					sales_part_payment += part_payment
+					sales_balance += balance
+
+		# =================================================
+		# SALES PERSON ROW
+		# =================================================
+
+		data.append(
+			{
+				"sales_person": sales_person,
+				"indent": 0,
+				"is_group": 1,
+				"row_type": "Sales Person",
+			}
+		)
+
+		# =================================================
+		# LEAD PERSON LOOP
+		# =================================================
+
+		for sales_partner in sorted(hierarchy[sales_person]):
+
+			# -------------------------------------------------
+			# LEAD PERSON TOTALS
+			# -------------------------------------------------
+
+			lead_bill = 0
+			lead_part_payment = 0
+			lead_balance = 0
+
+			for customer in hierarchy[sales_person][sales_partner]:
+
+				for invoice in hierarchy[sales_person][sales_partner][customer]:
+
+					bill_amt = invoice.grand_total or 0
+					balance = invoice.outstanding_amount or 0
 					part_payment = bill_amt - balance
 
 					if part_payment < 0:
@@ -357,66 +395,16 @@ def get_report_data(filters):
 					lead_part_payment += part_payment
 					lead_balance += balance
 
-		# =================================================
-		# LEAD PERSON ROW
-		# =================================================
-
-		data.append(
-			{
-				"lead_person": lead_person,
-				"indent": 0,
-				"is_group": 1,
-				"row_type": "Lead Person",
-			}
-		)
-
-		# =================================================
-		# SALES PERSON LOOP
-		# =================================================
-
-		for sales_person in sorted(hierarchy[lead_person]):
-
-			# -------------------------------------------------
-			# SALES PERSON TOTALS
-			# -------------------------------------------------
-
-			broker_bill = 0
-			broker_part_payment = 0
-			broker_balance = 0
-
-			# -------------------------------------------------
-			# CALCULATE SALES PERSON TOTALS
-			# -------------------------------------------------
-
-			for customer in hierarchy[lead_person][sales_person]:
-
-				for invoice in hierarchy[
-					lead_person
-				][sales_person][customer]:
-
-					bill_amt = invoice.grand_total or 0
-
-					balance = invoice.outstanding_amount or 0
-
-					part_payment = bill_amt - balance
-
-					if part_payment < 0:
-						part_payment = 0
-
-					broker_bill += bill_amt
-					broker_part_payment += part_payment
-					broker_balance += balance
-
 			# =================================================
-			# SALES PERSON ROW
+			# LEAD PERSON ROW
 			# =================================================
 
 			data.append(
 				{
-					"sales_person": sales_person,
+					"sales_partner": sales_partner,
 					"indent": 1,
 					"is_group": 1,
-					"row_type": "Sales Person",
+					"row_type": "Lead Person",
 				}
 			)
 
@@ -424,9 +412,7 @@ def get_report_data(filters):
 			# CUSTOMER LOOP
 			# =================================================
 
-			for customer in sorted(
-				hierarchy[lead_person][sales_person]
-			):
+			for customer in sorted(hierarchy[sales_person][sales_partner]):
 
 				# -------------------------------------------------
 				# CUSTOMER TOTALS
@@ -436,26 +422,13 @@ def get_report_data(filters):
 				customer_part_payment = 0
 				customer_balance = 0
 
-				# -------------------------------------------------
-				# RUNNING BALANCE
-				#
-				# Resets for every customer.
-				# -------------------------------------------------
-
+				# Running balance resets for every customer.
 				running_balance = 0
 
-				# -------------------------------------------------
-				# CALCULATE CUSTOMER TOTALS
-				# -------------------------------------------------
-
-				for invoice in hierarchy[
-					lead_person
-				][sales_person][customer]:
+				for invoice in hierarchy[sales_person][sales_partner][customer]:
 
 					bill_amt = invoice.grand_total or 0
-
 					balance = invoice.outstanding_amount or 0
-
 					part_payment = bill_amt - balance
 
 					if part_payment < 0:
@@ -482,18 +455,14 @@ def get_report_data(filters):
 				# INVOICE LOOP
 				# =================================================
 
-				for invoice in hierarchy[
-					lead_person
-				][sales_person][customer]:
+				for invoice in hierarchy[sales_person][sales_partner][customer]:
 
 					# -------------------------------------------------
 					# AMOUNTS
 					# -------------------------------------------------
 
 					bill_amt = invoice.grand_total or 0
-
 					balance = invoice.outstanding_amount or 0
-
 					part_payment = bill_amt - balance
 
 					if part_payment < 0:
@@ -501,12 +470,6 @@ def get_report_data(filters):
 
 					# -------------------------------------------------
 					# CUSTOMER RUNNING BALANCE
-					#
-					# Invoice 1 = 10,000 -> 10,000
-					# Invoice 2 =  5,000 -> 15,000
-					# Invoice 3 =  2,000 -> 17,000
-					#
-					# New customer starts from 0.
 					# -------------------------------------------------
 
 					running_balance += balance
@@ -516,13 +479,9 @@ def get_report_data(filters):
 					# =================================================
 
 					due_date = getdate(invoice.due_date)
-
 					today_date = getdate(today())
 
-					due_days = date_diff(
-						today_date,
-						due_date
-					)
+					due_days = date_diff(today_date, due_date)
 
 					if due_days < 0:
 						due_days = 0
@@ -578,46 +537,42 @@ def get_report_data(filters):
 				)
 
 			# =================================================
-			# SALES PERSON GRAND TOTAL
+			# LEAD PERSON TOTAL
 			# =================================================
 
 			data.append(
 				{
-					"sales_person": "Grand Total",
-					"bill_amt": broker_bill,
-					"part_payment": broker_part_payment,
-					"balance": broker_balance,
-					"balance_total": broker_balance,
+					"sales_partner": "Grand Total",
+					"bill_amt": lead_bill,
+					"part_payment": lead_part_payment,
+					"balance": lead_balance,
+					"balance_total": lead_balance,
 					"indent": 1,
 					"is_group": 0,
-					"row_type": "Sales Person Total",
+					"row_type": "Lead Person Total",
 				}
 			)
 
 		# =================================================
-		# LEAD PERSON GRAND TOTAL
+		# SALES PERSON GRAND TOTAL
 		# =================================================
 
 		data.append(
 			{
-				"lead_person": "Grand Total",
-				"bill_amt": lead_bill,
-				"part_payment": lead_part_payment,
-				"balance": lead_balance,
-				"balance_total": lead_balance,
+				"sales_person": "Grand Total",
+				"bill_amt": sales_bill,
+				"part_payment": sales_part_payment,
+				"balance": sales_balance,
+				"balance_total": sales_balance,
 				"indent": 0,
 				"is_group": 0,
-				"row_type": "Lead Person Total",
+				"row_type": "Sales Person Total",
 			}
 		)
 
-		# =================================================
-		# OVERALL TOTAL
-		# =================================================
-
-		overall_bill += lead_bill
-		overall_part_payment += lead_part_payment
-		overall_balance += lead_balance
+		overall_bill += sales_bill
+		overall_part_payment += sales_part_payment
+		overall_balance += sales_balance
 
 	# =====================================================
 	# OVERALL GRAND TOTAL
@@ -625,7 +580,7 @@ def get_report_data(filters):
 
 	data.append(
 		{
-			"lead_person": "Overall Grand Total",
+			"sales_person": "Overall Grand Total",
 			"bill_amt": overall_bill,
 			"part_payment": overall_part_payment,
 			"balance": overall_balance,

@@ -27,16 +27,16 @@ frappe.query_reports["Debtors Report Lead wise"] = {
 			}
         },
         {
-            fieldname: "lead_person",
+            fieldname: "sales_person",
             label: __("Lead Person"),
             fieldtype: "Link",
-            options: "Sales Partner"
+            options: "Sales Person"
         },
         {
-            fieldname: "sales_person",
-            label: __("Sales Person"),
+            fieldname: "sales_partner",
+            label: __("Sales Partner"),
             fieldtype: "Link",
-            options: "Sales Person"
+            options: "Sales Partner"
         },
 		{
 			fieldname: "territory",
@@ -63,7 +63,7 @@ frappe.query_reports["Debtors Report Lead wise"] = {
          * GRAND TOTAL
          */
         if (
-            data.party || data.sales_person || data.lead_person
+            data.party || data.sales_person || data.sales_partner
         ) {
             return `<b>${value}</b>`;
         }
